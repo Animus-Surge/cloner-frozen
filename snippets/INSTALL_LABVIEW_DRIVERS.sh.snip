@@ -1,0 +1,39 @@
+# BEGIN: LabView Drivers
+
+if $(apt-get list --installed | grep labview-full-2025-noble); then
+  echo "I: init: labview_drivers: Installing LabView drivers..."
+  plymouth display-message --text="Installing LabView drivers..."
+  apt-get install -y \
+    ni-488.2 \
+    ni-adcs \
+    ni-daqmx \
+    ni-dcpower \
+    ni-dmm \
+    ni-ecumc \
+    ni-fgen \
+    ni-flexrio \
+    ni-hwcfg-utility \
+    ni-pxiplatformservices \
+    ni-fpga-interface \
+    ni-rfsa \
+    ni-rfsg \
+    ni-scope \
+    ni-serial \
+    ni-switch \
+    ni-sync \
+    ni-syscfg-runtime \
+    ni-visa \
+    ni-xnet
+
+  if [[ $? -ne 0 ]]; then
+    echo "E: init: labview_drivers: Failed to install LabView drivers. See apt output above."
+    plymouth display-message --text="Failed to install LabView drivers."
+    sleep 2
+  else
+    echo "S: init: labview_drivers: Installed LabView drivers."
+  fi
+else
+  echo "W: init: labview_drivers: LabView not installed. Skipping"
+fi
+
+# END: LabView Drivers

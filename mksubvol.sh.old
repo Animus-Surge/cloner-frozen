@@ -1,0 +1,94 @@
+#!/bin/bash
+
+echo "N: Using absolute device path '$1'"
+sleep 5 # Artificial sleep
+
+# Create btrfs subvolumes; $1 contains root filesystem device path
+
+# TODO: non-default volume paths (maybe a custom script?)
+# Filesystem labels?
+
+current_wd=$(pwd)
+echo "N: Last working directory: $current_wd"
+cd /target
+
+echo "I: mksubvol: In /target..."
+
+echo "I: Creating subvolumes..."
+btrfs subvolume create @
+# TODO: make home be optional
+btrfs subvolume create @home
+btrfs subvolume create @swap
+btrfs subvolume create @var
+btrfs subvolume create @var_log
+btrfs subvolume create @var_log_audit
+btrfs subvolume create @var_tmp
+
+btrfs quota enable $1
+
+shopt -s extglob
+
+# Unmount bind mounts
+umount dev
+umount proc
+umount run
+umount sys
+
+echo "I: mksubvol: Moving target directories to subvolumes..."
+# Move all directories and files into subvolumes
+
+mv var/log/* @var_log
+mv var/* @var
+mv !(@*) @
+
+cd $current_wd
+
+# Unmount target
+umount --recursive /target
+
+echo "I: mksubvol: Re-mounting target..."
+# Mount subvolumes
+mount $1 -o subvol=@ /target
+mount $1 -o subvol=@home /target/home
+mount $1 -o subvol=@var /target/var
+mount $1 -o subvol=@var_log /target/var/log
+mount $1 -o subvol=@var_tmp /target/var/tmp
+
+# Mount bind mounts
+for dir in dev proc run sys; do
+  mount --bind "/$dir" "/target/$dir"
+done
+
+if [[ ! -d /target/var ]]; then
+  exit 1
+fi
+
+# /var/log/audit
+echo "I: mksubvol: Creating /var/log/audit..."
+mkdir /target/var/log/audit
+chown root:adm /target/var/log/audit
+chmod 750 /target/var/log/audit
+mount $1 -o subvol=@var_log_audit /target/var/log/audit
+
+# swapfile
+echo "I: mksubvol: Creating swapfile..."
+mkdir /target/swap
+mount $1 -o subvol=@swap /target/swap
+mem_av=$(free -m | awk '/^Mem:/ {print $2}')
+echo "N: mksubvol: Swapfile with size ${mem_av}M"
+btrfs filesystem mkswapfile --size "${mem_av}m" --uuid clear /target/swap/swapfile
+
+# Compression?
+btrfs filesystem defragment -czstd -r /target
+
+# fstab
+echo "I: mksubvol: Adding subvolumes to fstab..."
+echo "$1 / btrfs subvol=@,defaults,compress=zstd 0 0" >> /target/etc/fstab
+echo "$1 /home btrfs subvol=@home,defaults,compress=zstd,nodev,nosuid 0 0" >> /target/etc/fstab
+echo "$1 /swap btrfs subvol=@,defaults,compress=zstd,nodev,noexec,nosuid 0 0" >> /target/etc/fstab
+echo "$1 /var btrfs subvol=@,defaults,compress=zstd,nodev,nosuid 0 0" >> /target/etc/fstab
+echo "$1 /var/log btrfs subvol=@,defaults,compress=zstd,nodev,noexec,nosuid 0 0" >> /target/etc/fstab
+echo "$1 /var/log/audit btrfs subvol=@,defaults,compress=zstd,nodev,noexec,nosuid 0 0" >> /target/etc/fstab
+echo "$1 /var/tmp btrfs subvol=@,defaults,compress=zstd,nodev,nosuid 0 0" >> /target/etc/fstab
+
+echo "S: mksubvol: Done."

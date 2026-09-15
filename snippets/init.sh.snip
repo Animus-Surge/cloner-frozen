@@ -1,0 +1,92 @@
+#!/bin/bash
+
+plymouth display-message --text="Starting init script. The system may reboot several times, and you may be prompted to enter a password."
+sleep 1
+
+# Should allow puppet to work. Sleep 2 guarantees it has time to start and setup
+systemctl start systemd-timesyncd
+sleep 2
+
+mokutil --generate-hash="<replaceme>" > /tmp/mokhash
+
+# This allows updates to be signed WITH the new key, so we don't have to recreate and reset and re-enroll the key
+echo "I: init: Generating new MOK..."
+shred -u /var/lib/shim-signed/mok/MOK.der
+update-secureboot-policy --new-key
+
+# FIX: Fixes CrowdStrike Falcon Sensor
+systemctl stop --now falcon-sensor || true # NOFAIL
+apt purge -y falcon-sensor
+
+# Stage 1: Updates 
+plymouth display-message --text="Performing system updates..."
+
+# Fixed: switched apt-get with apt, apt-get apparently holds back certain packages
+apt update
+# Fix: apfs-dkms failing to build on 7.0.0; removed per VCU policy
+apt purge apfs-dkms
+apt upgrade -y
+
+# Stage 1.5: Packages and drivers
+plymouth display-message --text="Installing drivers..."
+
+# BEGIN: Populated by create_first_run.sh
+
+# <DRIVER: insert>
+
+plymouth display-message --text="Installing packages..."
+
+# lua-posix reinstall ; Fixes lmod issues
+apt-get reinstall -y lua-posix
+
+# <PACKAGE: insert>
+
+# END: populated by create_first_run.sh
+
+# Stage 2: Puppet
+plymouth display-message --text="Starting puppet agent..."
+/opt/puppetlabs/bin/puppet agent --test
+
+if [[ $? -ne 0 ]]; then
+  # If failed, we stop AND enable puppet so it runs next boot anyway.
+  systemctl stop puppet
+  systemctl enable puppet
+fi
+
+# Stage 3: Grub
+plymouth display-message --text="Updating GRUB..."
+
+grub-mkconfig -o /boot/efi/EFI/ubuntu/grub.cfg
+
+# Stage 4: MOK
+echo "I: init: Enrolling new MOK..."
+mokutil --import /var/lib/shim-signed/mok/MOK.der --hash-file /tmp/mokhash
+mokutil --timeout -1
+
+if [[ $? -eq 0 ]]; then
+  echo "S: init: Enrolled new MOK. Password is required on reboot."
+  plymouth display-message --text="MOK regenerated and enrolled. Password required on reboot."
+  touch /opt/require_reboot
+  sleep 5
+else
+  echo "E: init: Failed to enroll MOK. See journal for details."
+fi
+
+# All done. Check reboot flag and clean up
+systemctl disable init.service
+
+rm /usr/local/sbin/init.sh
+rm /etc/systemd/system/init.service
+
+shred -u /tmp/mokhash
+shred -u /opt/mokreset_stage
+
+if [[ -e /opt/require_reboot ]]; then
+  rm -f /opt/require_reboot
+  plymouth display-message --text="Initialization complete. Requiring reboot..."
+  sleep 4
+  reboot
+else
+  plymouth display-message --text="Initialization complete. Waiting for display manager..."
+fi
+

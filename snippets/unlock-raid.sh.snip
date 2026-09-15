@@ -1,0 +1,8 @@
+#!/bin/bash
+
+udevadm settle --timeout=30
+
+uuid=$(blkid -s uuid -o value /dev/md126p1)
+
+
+

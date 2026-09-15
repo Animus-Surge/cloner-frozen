@@ -1,0 +1,17 @@
+# BEGIN: NVIDIA Driver
+
+if grep -q "0x10de" /sys/bus/pci/devices/*/vendor 2>/dev/null; then
+  echo "I: init: nvidia_driver: Installing nvidia driver..."
+  plymouth display-message --text="Installing nvidia driver..."
+  apt-get install --no-install-recommends -y nvidia-driver-<NVIDIA_DRIVER_DEFAULT_VERSION>
+  if [[ $? -eq 0 ]]; then
+    touch /opt/require_reboot
+    echo "S: init: nvidia_driver: Installed nvidia driver."
+  else
+    echo "E: init: nvidia_driver: Failed to install nvidia driver. See apt output above."
+  fi
+else
+  echo "W: init: nvidia_driver: No nvidia device found. Not installing."
+fi
+
+# END: NVIDIA Driver
