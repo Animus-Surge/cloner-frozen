@@ -130,6 +130,12 @@ echo ""
 exit 1
 }
 
+nmcli -o g | grep -E "^connected" > /dev/null
+if [ $? -ne 0 ]; then
+	echo "You are not online, please ensure your network connection is functional before continuing"
+	exit 1
+fi
+
 # Argument parsing
 # Organized opts
 opts=$(getopt -o f:t:ldDbmsn:p:r:R:L:s:ShE: --long file:,target:luks,dual-boot,dry-run,btrfs,tpm,hostname:,package:,property:,conf-file:,log-file:,subvolume:,btrfs-default-subvols,help,extra-encrypted-disk -n "$0" -- "$@")
