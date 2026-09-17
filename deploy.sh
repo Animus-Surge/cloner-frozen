@@ -540,7 +540,8 @@ echo "I: chroot: Kernel version $kver"
 
 echo "I: chroot: Rebuilding initrd..."
 apt-get update
-apt-get reinstall linux-image-$kver linux-modules-$kver linux-modules-extra-$kver
+apt-get reinstall linux-image-$kver linux-modules-$kver
+apt-get reinstall linux-modules-extra-$kver
 
 # NEW: upgrades (Moved to init.sh)
 # apt-get upgrade
